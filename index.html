@@ -35,8 +35,6 @@
   .footer-actions{ display:flex; gap:8px; margin-top:8px }
   .fine{ font-size:11px; color:#667085; margin-top:6px }
   .tiny{ font-size:10px; color:#7a7f85 }
-  details{ margin-top:8px; }
-  details summary{ cursor:pointer; font-size:12px; color:#0a5a2d; }
 </style>
 </head>
 <body>
@@ -111,9 +109,6 @@
           </div>
 
           <div class="fine" id="day_totals"></div>
-          <details><summary>How we calculated this</summary>
-            <div id="calc_notes" class="tiny"></div>
-          </details>
         </div>
       </div>
 
@@ -126,53 +121,46 @@
   </div>
 
 <script>
-const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbxqyHrcSCryVh-LbmlRsA9_xB4vb3Pk10Sl2EmGQzHewOw_Ens8Iz17vsEjErdYW8yd/exec";
+const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbwJbpQ-xbx20UcfOfFboFfMM0AtjSuD06gfbhFbocDe_Yi22ySG8IsJvrvIWszssMln/exec";
 
-/* ---------- Macro DB ----------
-   Units are per 100 g cooked unless mode:'perunit' (then per unit).
-   Values based on IFCT/USDA typical items for event estimates. */
+/* ---------- Macro DB (per 100g cooked unless perunit) ---------- */
 const MACRO_DB = {
-  rice_cooked:          {mode:'per100', p:2.7,  c:28,  f:0.3,  k:130},
-  dal_cooked:           {mode:'per100', p:9.0,  c:20,  f:1.0,  k:116},
-  veg_mix:              {mode:'per100', p:2.0,  c:8,   f:3.0,  k:80},   // generic mixed veg with light oil
-  roti:                 {mode:'perunit',p:3.0,  c:20,  f:3.0,  k:120, unit_weight_g:50}, // ~70g dough
-  paneer:               {mode:'per100', p:18.0, c:3.0, f:20.0, k:265},
-  tofu_firm:            {mode:'per100', p:8.0,  c:2.0, f:5.0,  k:95},
-  chicken_breast_ckd:   {mode:'per100', p:31.0, c:0.0, f:3.6,  k:165},
-  fish_ckd:             {mode:'per100', p:22.0, c:0.0, f:6.0,  k:160},  // e.g., rohu/tilapia cooked
-  egg_white:            {mode:'perunit',p:3.6,  c:0.2, f:0.05, k:17,  unit_weight_g:33},
-  egg_whole:            {mode:'perunit',p:6.0,  c:0.4, f:5.0,  k:72,  unit_weight_g:50},
-  greek_yogurt:         {mode:'per100', p:10.0, c:4.0, f:0.4,  k:59},
-  curd_lowfat:          {mode:'per100', p:3.5,  c:4.7, f:3.0,  k:63},
-  oats_dry:             {mode:'per100', p:13.0, c:68,  f:7.0,  k:379},
-  whey_scoop:           {mode:'perunit',p:24.0, c:2.0, f:2.0,  k:120, unit_weight_g:30},
-  almonds:              {mode:'per100', p:21.0, c:22,  f:50.0, k:579},
-  bread_slice:          {mode:'perunit',p:3.5,  c:12,  f:1.0,  k:66,  unit_weight_g:25},
-  banana:               {mode:'per100', p:1.1,  c:23,  f:0.3,  k:96}
+  rice_cooked:{mode:'per100',p:2.7,c:28,f:0.3,k:130},
+  dal_cooked:{mode:'per100',p:9.0,c:20,f:1.0,k:116},
+  veg_mix:{mode:'per100',p:2.0,c:8,f:3.0,k:80},
+  roti:{mode:'perunit',p:3.0,c:20,f:3.0,k:120,unit_weight_g:50},
+  paneer:{mode:'per100',p:18.0,c:3.0,f:20.0,k:265},
+  tofu_firm:{mode:'per100',p:8.0,c:2.0,f:5.0,k:95},
+  chicken_breast_ckd:{mode:'per100',p:31.0,c:0.0,f:3.6,k:165},
+  fish_ckd:{mode:'per100',p:22.0,c:0.0,f:6.0,k:160},
+  egg_white:{mode:'perunit',p:3.6,c:0.2,f:0.05,k:17,unit_weight_g:33},
+  egg_whole:{mode:'perunit',p:6.0,c:0.4,f:5.0,k:72,unit_weight_g:50},
+  greek_yogurt:{mode:'per100',p:10.0,c:4.0,f:0.4,k:59},
+  curd_lowfat:{mode:'per100',p:3.5,c:4.7,f:3.0,k:63},
+  oats_dry:{mode:'per100',p:13.0,c:68,f:7.0,k:379},
+  whey_scoop:{mode:'perunit',p:24.0,c:2.0,f:2.0,k:120,unit_weight_g:30},
+  almonds:{mode:'per100',p:21.0,c:22,f:50.0,k:579},
+  bread_slice:{mode:'perunit',p:3.5,c:12,f:1.0,k:66,unit_weight_g:25},
+  banana:{mode:'per100',p:1.1,c:23,f:0.3,k:96}
 };
 
-// Helpers to scale items
 function macroOf(key, qty, unit='g'){
-  const m = MACRO_DB[key]; if(!m) return {p:0,c:0,f:0,k:0,desc:`${key}?`};
+  const m = MACRO_DB[key]; if(!m) return {p:0,c:0,f:0,k:0};
   if(m.mode==='per100'){
     const f = (qty||0)/100;
-    return { p:m.p*f, c:m.c*f, f:m.f*f, k:m.k*f, desc:`${qty} g` };
-  }else{ // per unit
-    let units = unit==='unit' ? (qty||0) : (qty||0)/(m.unit_weight_g||1);
-    return { p:m.p*units, c:m.c*units, f:m.f*units, k:m.k*units, desc: unit==='unit' ? `${qty} unit` : `${qty} g` };
+    return { p:m.p*f, c:m.c*f, f:m.f*f, k:m.k*f };
   }
+  const units = unit==='unit' ? (qty||0) : (qty||0)/(m.unit_weight_g||1);
+  return { p:m.p*units, c:m.c*units, f:m.f*units, k:m.k*units };
 }
 function sum(a,b){ return {p:a.p+b.p, c:a.c+b.c, f:a.f+b.f, k:a.k+b.k}; }
 function round1(n){ return Math.round(n*10)/10; }
 function gramsForProtein(key, target_p_g){
-  // grams of this item needed to deliver target protein grams (for per100 items)
   const m = MACRO_DB[key]; if(!m) return 0;
-  if(m.mode==='per100'){ return Math.max(0, (target_p_g / (m.p||1)) * 100); }
-  // per-unit: compute units and convert to grams equivalent
+  if(m.mode==='per100') return Math.max(0, (target_p_g / (m.p||1)) * 100);
   const units = Math.ceil(target_p_g / (m.p||1));
   return (m.unit_weight_g||0) * units;
 }
-
 function saveLead(obj){
   if(!LEAD_ENDPOINT) return;
   const p = new URLSearchParams(obj);
@@ -193,129 +181,86 @@ function run(){
   if(!name || !phone || !email){ alert("Please fill name, mobile and email."); return; }
   if(!(h>0 && w>0)){ alert("Enter valid height and weight."); return; }
 
-  // Energy & daily macros
-  const BMR  = 10*w + 6.25*h - 5*age + (sex==="male"?5:-161);
-  const TDEE = Math.max(1200, (BMR * act) * 0.9);  // trimmed ~10% for field realism
+  // Energy & daily protein target
+  const BMR  = 10*w + 6.25*h - 5*age + (sex==="male" ? 5 : -161);
+  const TDEE = Math.max(1200, (BMR * act) * 0.9);     // ~10% trimmed
   const protein_target = Math.round(w * (sex==="male" ? 2.0 : 1.6)); // g/day
 
-  // Distribute protein targets per-meal
+  // Per-meal protein goals
   const p_b = Math.round(protein_target * 0.25);
   const p_l = Math.round(protein_target * 0.35);
-  const p_s = 25;  // shake target ~1 scoop = ~24g
+  const p_s = 25; // 1 scoop whey ≈ 24–25 g
   const p_d = Math.max(0, protein_target - (p_b + p_l + p_s));
 
-  // Build meals with real macros
+  // Build meals
   const items = { b:[], l:[], s:[], d:[] };
-  let calcNotes = [];
+  const make = (name, qty, m) => ({ name, qty, m });
 
   if(pref === "veg"){
     // Breakfast: oats 50g + Greek yogurt 150g + paneer to hit p_b
     const b1 = macroOf('oats_dry', 50);
     const b2 = macroOf('greek_yogurt', 150);
-    let b_protein_from_fixed = b1.p + b2.p;
-    const need_paneer = Math.max(0, p_b - b_protein_from_fixed);
-    const paneer_g = Math.round(gramsForProtein('paneer', need_paneer));
+    const paneer_g = Math.round(gramsForProtein('paneer', Math.max(0, p_b - (b1.p + b2.p))));
     const b3 = macroOf('paneer', paneer_g);
-    items.b = [
-      {name:'Oats (dry)', qty:'50 g', m:b1},
-      {name:'Greek yogurt', qty:'150 g', m:b2},
-      {name:'Paneer', qty:`${paneer_g} g`, m:b3}
-    ];
+    items.b = [ make('Oats (dry)', '50 g', b1), make('Greek yogurt', '150 g', b2), make('Paneer', `${paneer_g} g`, b3) ];
 
     // Lunch: rice 150g + dal 200g + paneer to hit p_l
     const l1 = macroOf('rice_cooked', 150);
     const l2 = macroOf('dal_cooked', 200);
-    const need_paneer_l = Math.max(0, p_l - (l1.p + l2.p));
-    const paneer_l_g = Math.round(gramsForProtein('paneer', need_paneer_l));
+    const paneer_l_g = Math.round(gramsForProtein('paneer', Math.max(0, p_l - (l1.p + l2.p))));
     const l3 = macroOf('paneer', paneer_l_g);
-    items.l = [
-      {name:'Jeera rice', qty:'150 g cooked', m:l1},
-      {name:'Dal', qty:'200 g', m:l2},
-      {name:'Paneer (grilled)', qty:`${paneer_l_g} g`, m:l3}
-    ];
+    items.l = [ make('Jeera rice', '150 g cooked', l1), make('Dal', '200 g', l2), make('Paneer (grilled)', `${paneer_l_g} g`, l3) ];
 
     // Snack: whey 1 scoop + almonds 15g
     const s1 = macroOf('whey_scoop', 1, 'unit');
     const s2 = macroOf('almonds', 15);
-    items.s = [
-      {name:'Whey protein', qty:'1 scoop', m:s1},
-      {name:'Almonds', qty:'15 g', m:s2}
-    ];
+    items.s = [ make('Whey protein', '1 scoop', s1), make('Almonds', '15 g', s2) ];
 
-    // Dinner: 2 rotis + tofu to hit p_d + veg mix 150g
+    // Dinner: 2 rotis + tofu to hit p_d + veg 150g
     const d1 = macroOf('roti', 2, 'unit');
     const d3 = macroOf('veg_mix', 150);
-    const need_tofu = Math.max(0, p_d - (d1.p + d3.p));
-    const tofu_g = Math.round(gramsForProtein('tofu_firm', need_tofu));
+    const tofu_g = Math.round(gramsForProtein('tofu_firm', Math.max(0, p_d - (d1.p + d3.p))));
     const d2 = macroOf('tofu_firm', tofu_g);
-    items.d = [
-      {name:'Roti', qty:'2', m:d1},
-      {name:'Tofu/Chole alt (tofu used)', qty:`${tofu_g} g`, m:d2},
-      {name:'Sautéed veg', qty:'150 g', m:d3}
-    ];
-
-    calcNotes.push('Veg plan: Protein gaps filled by paneer/tofu to hit meal targets.');
+    items.d = [ make('Roti', '2', d1), make('Tofu', `${tofu_g} g`, d2), make('Sautéed veg', '150 g', d3) ];
   } else {
+    // Non-veg
     const b1 = macroOf('egg_white', 4, 'unit');
     const b2 = macroOf('egg_whole', 1, 'unit');
     const b3 = macroOf('bread_slice', 2, 'unit');
     const b4 = macroOf('banana', 100);
-    let b_fixed = sum(sum(b1,b2), sum(b3,b4));
-    items.b = [
-      {name:'Egg whites', qty:'4', m:b1},
-      {name:'Egg (whole)', qty:'1', m:b2},
-      {name:'Bread', qty:'2 slices', m:b3},
-      {name:'Fruit (banana)', qty:'100 g', m:b4}
-    ];
+    items.b = [ make('Egg whites', '4', b1), make('Egg (whole)', '1', b2), make('Bread', '2 slices', b3), make('Fruit (banana)', '100 g', b4) ];
 
-    // Lunch: rice 150g + chicken to hit p_l + veg 100g
     const l1 = macroOf('rice_cooked', 150);
     const l3 = macroOf('veg_mix', 100);
-    const need_chicken_l = Math.max(0, p_l - (l1.p + l3.p));
-    const chicken_l_g = Math.round(gramsForProtein('chicken_breast_ckd', need_chicken_l));
+    const chicken_l_g = Math.round(gramsForProtein('chicken_breast_ckd', Math.max(0, p_l - (l1.p + l3.p))));
     const l2 = macroOf('chicken_breast_ckd', chicken_l_g);
-    items.l = [
-      {name:'Herb rice', qty:'150 g cooked', m:l1},
-      {name:'Grilled chicken', qty:`${chicken_l_g} g`, m:l2},
-      {name:'Veg', qty:'100 g', m:l3}
-    ];
+    items.l = [ make('Rice', '150 g cooked', l1), make('Grilled chicken', `${chicken_l_g} g`, l2), make('Veg', '100 g', l3) ];
 
-    // Snack: whey 1 scoop or yogurt 200g (use whey for consistency)
     const s1 = macroOf('whey_scoop', 1, 'unit');
-    items.s = [{name:'Whey protein', qty:'1 scoop', m:s1}];
+    items.s = [ make('Whey protein', '1 scoop', s1) ];
 
-    // Dinner: 2 rotis + chicken to hit p_d + veg 150g
     const d1 = macroOf('roti', 2, 'unit');
     const d3 = macroOf('veg_mix', 150);
-    const need_chicken_d = Math.max(0, p_d - (d1.p + d3.p));
-    const chicken_d_g = Math.round(gramsForProtein('chicken_breast_ckd', need_chicken_d));
+    const chicken_d_g = Math.round(gramsForProtein('chicken_breast_ckd', Math.max(0, p_d - (d1.p + d3.p))));
     const d2 = macroOf('chicken_breast_ckd', chicken_d_g);
-    items.d = [
-      {name:'Roti', qty:'2', m:d1},
-      {name:'Chicken curry (lean)', qty:`${chicken_d_g} g`, m:d2},
-      {name:'Veg', qty:'150 g', m:d3}
-    ];
-
-    calcNotes.push('Non-veg plan: Protein gaps filled by grilled chicken to hit meal targets.');
+    items.d = [ make('Roti', '2', d1), make('Chicken (lean curry)', `${chicken_d_g} g`, d2), make('Veg', '150 g', d3) ];
   }
 
-  // Tally per-meal and day totals
-  function tot(list){
-    return list.reduce((acc, it)=>sum(acc,it.m), {p:0,c:0,f:0,k:0});
-  }
-  const tb = tot(items.b), tl = tot(items.l), tsn = tot(items.s), td = tot(items.d);
-  const day = { p:tb.p+tl.p+tsn.p+td.p, c:tb.c+tl.c+tsn.c+td.c, f:tb.f+tl.f+tsn.f+td.f, k:tb.k+tl.k+tsn.k+td.k };
+  // Totals
+  const tot = arr => arr.reduce((acc, it)=>sum(acc, it.m), {p:0,c:0,f:0,k:0});
+  const tb = tot(items.b), tl = tot(items.l), ts = tot(items.s), td = tot(items.d);
+  const day = { p:tb.p+tl.p+ts.p+td.p, c:tb.c+tl.c+ts.c+td.c, f:tb.f+tl.f+ts.f+td.f, k:tb.k+tl.k+ts.k+td.k };
 
-  // UI render
-  function liText(it){ return `<li>${it.name} — ${it.qty} (~${round1(it.m.p)}P / ${round1(it.m.c)}C / ${round1(it.m.f)}F)</li>`; }
-  document.getElementById('b_items').innerHTML = items.b.map(liText).join('');
-  document.getElementById('l_items').innerHTML = items.l.map(liText).join('');
-  document.getElementById('s_items').innerHTML = items.s.map(liText).join('');
-  document.getElementById('d_items').innerHTML = items.d.map(liText).join('');
-  document.getElementById('b_totals').innerHTML = `<div class="tiny">Total: ~${round1(tb.p)}P / ${round1(tb.c)}C / ${round1(tb.f)}F · ${Math.round(tb.k)} kcal</div>`;
-  document.getElementById('l_totals').innerHTML = `<div class="tiny">Total: ~${round1(tl.p)}P / ${round1(tl.c)}C / ${round1(tl.f)}F · ${Math.round(tl.k)} kcal</div>`;
-  document.getElementById('s_totals').innerHTML = `<div class="tiny">Total: ~${round1(tsn.p)}P / ${round1(tsn.c)}C / ${round1(tsn.f)}F · ${Math.round(tsn.k)} kcal</div>`;
-  document.getElementById('d_totals').innerHTML = `<div class="tiny">Total: ~${round1(td.p)}P / ${round1(td.c)}C / ${round1(td.f)}F · ${Math.round(td.k)} kcal</div>`;
+  // Render
+  const li = it => `<li>${it.name} — ${it.qty} (~${round1(it.m.p)}P / ${round1(it.m.c)}C / ${round1(it.m.f)}F)</li>`;
+  document.getElementById('b_items').innerHTML = items.b.map(li).join('');
+  document.getElementById('l_items').innerHTML = items.l.map(li).join('');
+  document.getElementById('s_items').innerHTML = items.s.map(li).join('');
+  document.getElementById('d_items').innerHTML = items.d.map(li).join('');
+  document.getElementById('b_totals').innerHTML = `<div class="tiny">Total: ${round1(tb.p)}P / ${round1(tb.c)}C / ${round1(tb.f)}F · ${Math.round(tb.k)} kcal</div>`;
+  document.getElementById('l_totals').innerHTML = `<div class="tiny">Total: ${round1(tl.p)}P / ${round1(tl.c)}C / ${round1(tl.f)}F · ${Math.round(tl.k)} kcal</div>`;
+  document.getElementById('s_totals').innerHTML = `<div class="tiny">Total: ${round1(ts.p)}P / ${round1(ts.c)}C / ${round1(ts.f)}F · ${Math.round(ts.k)} kcal</div>`;
+  document.getElementById('d_totals').innerHTML = `<div class="tiny">Total: ${round1(td.p)}P / ${round1(td.c)}C / ${round1(td.f)}F · ${Math.round(td.k)} kcal</div>`;
 
   document.getElementById('summary').innerText =
     `${name}, your target is ~${Math.round(TDEE)} kcal | Protein ${protein_target} g/day.`;
@@ -325,17 +270,9 @@ function run(){
      <div class="pill">C: ${Math.round(day.c)} g</div>
      <div class="pill">F: ${Math.round(day.f)} g</div>`;
   document.getElementById('day_totals').innerText =
-    `Meals are engineered to hit per-meal protein targets; calories may be ±5–10% vs TDEE.`;
+    `Meals are engineered to hit per-meal protein; calories may be ±5–10% vs TDEE.`;
 
-  document.getElementById('calc_notes').innerHTML =
-    `BMR: Mifflin–St Jeor; TDEE = BMR×activity×0.9. Protein: ${sex==='male'?'2.0×':'1.6×'} bodyweight (g/day).
-     Database entries (per 100g cooked unless per unit): ` +
-    Object.keys(MACRO_DB).map(k=>{
-      const m=MACRO_DB[k];
-      return `${k}${m.mode==='perunit'?' (per unit)':''}: ${m.p}/${m.c}/${m.f}/${m.k}`;
-    }).join(' · ');
-
-  // Save ONCE with full data
+  // Save ONCE with full data (aligns with your Apps Script header)
   saveLead({
     name, phone, email, pref,
     height:h, weight:w, age, sex, activity:act,
@@ -355,7 +292,6 @@ function clearAll(){
   document.getElementById('results').style.display="none";
 }
 
-// Promo overlay as before
 function openPromo(){
   if(document.getElementById('results').style.display === ''){
     document.getElementById('promoOverlay').style.display='flex';
