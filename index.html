@@ -20,7 +20,6 @@
     color: var(--text);
     line-height:1.35;
   }
-  /* Single-screen layout */
   .viewport{
     height:100vh;
     max-width:420px;
@@ -28,7 +27,7 @@
     display:flex;
     flex-direction:column;
     padding:10px 10px calc(env(safe-area-inset-bottom) + 10px);
-    overflow:hidden; /* prevent page scroll */
+    overflow:hidden;
   }
   .brand{
     display:flex;justify-content:center;align-items:center;
@@ -41,10 +40,7 @@
     box-shadow:0 6px 18px rgba(16,24,40,.06);
     flex:1; display:flex; flex-direction:column; min-height:0;
   }
-  .row{
-    display:grid; grid-template-columns:1fr 1fr; gap:8px;
-  }
-  .row3{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .row3{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; flex-wrap:wrap; }
   label{font-size:12px;font-weight:700; display:block; margin-bottom:4px}
   input, select, button{
     width:100%; border:1px solid var(--border); border-radius:10px;
@@ -56,7 +52,6 @@
   .controls{display:flex; gap:8px; margin-top:8px}
   .section-title{font-size:13px;font-weight:900; letter-spacing:.02em; margin:2px 0 6px}
   .scroll{flex:1; min-height:0; overflow:auto; padding-right:4px}
-  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:8px}
   .result{
     border:1px dashed #cfd8d3; border-radius:10px; padding:8px; background:#fafcfa; font-size:13px;
   }
@@ -80,7 +75,7 @@
     <div class="card">
       <div class="scroll">
         <div class="section-title">Your details</div>
-        <div class="row">
+        <div class="row3">
           <div>
             <label>Name</label>
             <input id="name" placeholder="Your name">
@@ -89,8 +84,6 @@
             <label>Mobile</label>
             <input id="phone" placeholder="+91xxxxxxxxxx">
           </div>
-        </div>
-        <div class="row">
           <div>
             <label>Email</label>
             <input id="email" type="email" placeholder="you@example.com">
@@ -113,6 +106,17 @@
           <div>
             <label>Weight (kg)</label>
             <input id="weight" type="number" min="35" max="160" placeholder="70">
+          </div>
+          <div>
+            <label>Age</label>
+            <input id="age" type="number" min="14" max="80" placeholder="28">
+          </div>
+          <div>
+            <label>Sex</label>
+            <select id="sex">
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
           </div>
           <div>
             <label>Activity</label>
@@ -162,6 +166,7 @@ function saveLead(obj){
   const p = new URLSearchParams(obj);
   fetch(LEAD_ENDPOINT, {method:"POST", body:p}).catch(()=>{});
 }
+
 function run(){
   const name = document.getElementById('name').value.trim();
   const phone = document.getElementById('phone').value.trim();
@@ -169,24 +174,27 @@ function run(){
   const pref = document.getElementById('pref').value;
   const h = parseFloat(document.getElementById('height').value);
   const w = parseFloat(document.getElementById('weight').value);
+  const age = parseFloat(document.getElementById('age').value || "28");
+  const sex = document.getElementById('sex').value || "male";
   const act = parseFloat(document.getElementById('activity').value);
 
   if(!name || !phone || !email){ alert("Please fill name, mobile and email."); return; }
   if(!(h>0 && w>0)){ alert("Enter valid height and weight."); return; }
 
-  // Save minimal lead immediately (in case they drop)
   saveLead({name, phone, email, pref, ts:new Date().toISOString()});
 
-  // BMR (age 28, s=0 simplification for quick event use)
-  const BMR = 10*w + 6.25*h - 5*28;
+  let s = 0;
+  if (sex === "male") s = 5;
+  if (sex === "female") s = -161;
+
+  const BMR = 10*w + 6.25*h - 5*age + s;
   const TDEE = Math.max(1200, BMR * act);
   const protein_kcal = TDEE * 0.30, carbs_kcal = TDEE * 0.40, fat_kcal = TDEE * 0.30;
   const protein_g = protein_kcal / 4, carbs_g = carbs_kcal / 4, fat_g = fat_kcal / 9;
 
-  // Send full payload
   saveLead({
     name, phone, email, pref,
-    height:h, weight:w, activity:act,
+    height:h, weight:w, age, sex, activity:act,
     TDEE: round(TDEE), p: round(protein_g), c: round(carbs_g), f: round(fat_g),
     ts:new Date().toISOString()
   });
@@ -223,15 +231,16 @@ function run(){
   document.getElementById('dinner').innerText = m.d;
   document.getElementById('results').style.display = "";
 }
+
 function clearAll(){
-  ['name','phone','email','height','weight'].forEach(id=>document.getElementById(id).value="");
+  ['name','phone','email','height','weight','age'].forEach(id=>document.getElementById(id).value="");
   document.getElementById('pref').value="veg";
+  document.getElementById('sex').value="male";
   document.getElementById('activity').value="1.2";
   document.getElementById('results').style.display="none";
 }
 
 function openPromo(){
-  // Only allow after results are visible (after plan is generated)
   if(document.getElementById('results').style.display === ''){
     document.getElementById('promoOverlay').style.display='flex';
   }else{
@@ -241,24 +250,23 @@ function openPromo(){
 function closePromo(){
   document.getElementById('promoOverlay').style.display='none';
 }
-
 </script>
 
-  <!-- Promo overlay -->
-  <div id="promoOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:9999;">
-    <div style="background:#fff;border-radius:14px;max-width:420px;width:92%;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:8px;">
-      <img src="flyer for cult event.jpg" alt="Kenko Meal Plans" style="width:100%;height:auto;border-radius:10px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a href="https://www.thekenkolife.com/onboarding-form" target="_blank" style="flex:1">
-          <button style="width:100%">Visit Site</button>
-        </a>
-        <a href="tel:+916366946047" style="flex:1">
-          <button class="secondary" style="width:100%">Call Us</button>
-        </a>
-      </div>
-      <button class="secondary" onclick="closePromo()">Close</button>
+<!-- Promo overlay -->
+<div id="promoOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:9999;">
+  <div style="background:#fff;border-radius:14px;max-width:420px;width:92%;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:8px;">
+    <img src="flyer for cult event.jpg" alt="Kenko Meal Plans" style="width:100%;height:auto;border-radius:10px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="https://www.thekenkolife.com/onboarding-form" target="_blank" style="flex:1">
+        <button style="width:100%">Visit Site</button>
+      </a>
+      <a href="tel:+916366946047" style="flex:1">
+        <button class="secondary" style="width:100%">Call Us</button>
+      </a>
     </div>
+    <button class="secondary" onclick="closePromo()">Close</button>
   </div>
+</div>
 
 </body>
 </html>
