@@ -5,63 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Kenko Life — Quick Plan</title>
 <style>
-  :root{
-    --green:#0d6b3a;
-    --cream:#f4efe6;
-    --text:#122;
-    --border:#d9d9e3;
-  }
+  :root{ --green:#0d6b3a; --cream:#f4efe6; --text:#122; --border:#d9d9e3; }
   *{box-sizing:border-box}
   html,body{height:100%;}
-  body{
-    margin:0;
-    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    background: var(--cream);
-    color: var(--text);
-    line-height:1.35;
-  }
-  .viewport{
-    height:100vh;
-    max-width:420px;
-    margin:0 auto;
-    display:flex;
-    flex-direction:column;
-    padding:10px 10px calc(env(safe-area-inset-bottom) + 10px);
-    overflow:hidden;
-  }
-  .brand{
-    display:flex;justify-content:center;align-items:center;
-    padding:4px 0 6px;
-  }
-  .brand img{width:110px;height:auto;display:block}
-  .card{
-    background:#fff;border:1px solid var(--border);
-    border-radius:14px; padding:10px;
-    box-shadow:0 6px 18px rgba(16,24,40,.06);
-    flex:1; display:flex; flex-direction:column; min-height:0;
-  }
+  body{ margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+        background:var(--cream); color:var(--text); line-height:1.35; }
+  .viewport{ height:100vh; max-width:420px; margin:0 auto; display:flex; flex-direction:column;
+             padding:10px 10px calc(env(safe-area-inset-bottom) + 10px); overflow:hidden; }
+  .brand{ display:flex; justify-content:center; align-items:center; padding:4px 0 6px; }
+  .brand img{ width:110px; height:auto; display:block }
+  .card{ background:#fff; border:1px solid var(--border); border-radius:14px; padding:10px;
+         box-shadow:0 6px 18px rgba(16,24,40,.06); flex:1; display:flex; flex-direction:column; min-height:0; }
   .row3{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; flex-wrap:wrap; }
-  label{font-size:12px;font-weight:700; display:block; margin-bottom:4px}
-  input, select, button{
-    width:100%; border:1px solid var(--border); border-radius:10px;
-    padding:10px; font-size:14px; outline:none;
-  }
-  input:focus, select:focus{border-color:#9dd9c7; box-shadow:0 0 0 3px rgba(13,107,58,.12)}
-  button{background:var(--green); color:#fff; border:none; font-weight:800; cursor:pointer}
-  button.secondary{background:#fff;color:var(--green); border:2px solid var(--green)}
-  .controls{display:flex; gap:8px; margin-top:8px}
-  .section-title{font-size:13px;font-weight:900; letter-spacing:.02em; margin:2px 0 6px}
-  .scroll{flex:1; min-height:0; overflow:auto; padding-right:4px}
-  .result{
-    border:1px dashed #cfd8d3; border-radius:10px; padding:8px; background:#fafcfa; font-size:13px;
-  }
-  .pills{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
-  .pill{background:#e7f5ee; color:#0a5a2d; font-weight:800; font-size:11px; padding:6px 8px; border-radius:999px}
-  .meals{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px}
-  .meal{border:1px solid #eef2ef; border-radius:10px; padding:8px; font-size:12px}
-  .footer-actions{display:flex; gap:8px; margin-top:8px}
-  .fine{font-size:11px; color:#667085; margin-top:4px}
-  .tiny{font-size:10px; color:#7a7f85}
+  label{ font-size:12px; font-weight:700; display:block; margin-bottom:4px }
+  input,select,button{ width:100%; border:1px solid var(--border); border-radius:10px;
+                       padding:10px; font-size:14px; outline:none; }
+  input:focus,select:focus{ border-color:#9dd9c7; box-shadow:0 0 0 3px rgba(13,107,58,.12) }
+  button{ background:var(--green); color:#fff; border:none; font-weight:800; cursor:pointer }
+  button.secondary{ background:#fff; color:var(--green); border:2px solid var(--green) }
+  .controls{ display:flex; gap:8px; margin-top:8px }
+  .section-title{ font-size:13px; font-weight:900; letter-spacing:.02em; margin:2px 0 6px }
+  .scroll{ flex:1; min-height:0; overflow:auto; padding-right:4px }
+  .result{ border:1px dashed #cfd8d3; border-radius:10px; padding:8px; background:#fafcfa; font-size:13px; }
+  .pills{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px }
+  .pill{ background:#e7f5ee; color:#0a5a2d; font-weight:800; font-size:11px; padding:6px 8px; border-radius:999px }
+  .meals{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px }
+  .meal{ border:1px solid #eef2ef; border-radius:10px; padding:8px; font-size:12px }
+  .footer-actions{ display:flex; gap:8px; margin-top:8px }
+  .fine{ font-size:11px; color:#667085; margin-top:4px }
+  .tiny{ font-size:10px; color:#7a7f85 }
 </style>
 </head>
 <body>
@@ -76,50 +48,24 @@
       <div class="scroll">
         <div class="section-title">Your details</div>
         <div class="row3">
-          <div>
-            <label>Name</label>
-            <input id="name" placeholder="Your name">
-          </div>
-          <div>
-            <label>Mobile</label>
-            <input id="phone" placeholder="+91xxxxxxxxxx">
-          </div>
-          <div>
-            <label>Email</label>
-            <input id="email" type="email" placeholder="you@example.com">
-          </div>
+          <div><label>Name</label><input id="name" placeholder="Your name"></div>
+          <div><label>Mobile</label><input id="phone" placeholder="+91xxxxxxxxxx"></div>
+          <div><label>Email</label><input id="email" type="email" placeholder="you@example.com"></div>
           <div>
             <label>Preference</label>
-            <select id="pref">
-              <option value="veg">Veg</option>
-              <option value="nonveg">Non-Veg</option>
-            </select>
+            <select id="pref"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option></select>
           </div>
         </div>
 
         <div class="section-title" style="margin-top:10px">Stats</div>
         <div class="row3">
-          <div>
-            <label>Height (cm)</label>
-            <input id="height" type="number" min="120" max="220" placeholder="170">
+          <div><label>Height (cm)</label><input id="height" type="number" min="120" max="220" placeholder="170"></div>
+          <div><label>Weight (kg)</label><input id="weight" type="number" min="35" max="160" placeholder="70"></div>
+          <div><label>Age</label><input id="age" type="number" min="14" max="80" placeholder="28"></div>
+          <div><label>Sex</label>
+            <select id="sex"><option value="male">Male</option><option value="female">Female</option></select>
           </div>
-          <div>
-            <label>Weight (kg)</label>
-            <input id="weight" type="number" min="35" max="160" placeholder="70">
-          </div>
-          <div>
-            <label>Age</label>
-            <input id="age" type="number" min="14" max="80" placeholder="28">
-          </div>
-          <div>
-            <label>Sex</label>
-            <select id="sex">
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          </div>
-          <div>
-            <label>Activity</label>
+          <div><label>Activity</label>
             <select id="activity">
               <option value="1.2">Sedentary</option>
               <option value="1.375">Light (1–3x/wk)</option>
@@ -144,7 +90,7 @@
             <div class="meal"><strong>Snack</strong><div id="snack"></div></div>
             <div class="meal"><strong>Dinner</strong><div id="dinner"></div></div>
           </div>
-          <div class="fine">*Estimate via Mifflin–St Jeor × activity multiplier.</div>
+          <div class="fine">*Estimate via Mifflin–St Jeor × activity multiplier (field-trimmed).</div>
         </div>
       </div>
 
@@ -160,11 +106,10 @@
 const CALL_NUMBER = "+916366946047";
 const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbxqyHrcSCryVh-LbmlRsA9_xB4vb3Pk10Sl2EmGQzHewOw_Ens8Iz17vsEjErdYW8yd/exec";
 
-function round(n){return Math.round(n);}
 function saveLead(obj){
-  if(!LEAD_ENDPOINT){return;}
+  if(!LEAD_ENDPOINT) return;
   const p = new URLSearchParams(obj);
-  fetch(LEAD_ENDPOINT, {method:"POST", body:p}).catch(()=>{});
+  fetch(LEAD_ENDPOINT, { method:"POST", body:p }).catch(()=>{});
 }
 
 function run(){
@@ -181,69 +126,55 @@ function run(){
   if(!name || !phone || !email){ alert("Please fill name, mobile and email."); return; }
   if(!(h>0 && w>0)){ alert("Enter valid height and weight."); return; }
 
-  saveLead({name, phone, email, pref, ts:new Date().toISOString()});
+  // --- Calorie and macro calculation (final) ---
+  const BMR  = 10*w + 6.25*h - 5*age + (sex === "male" ? 5 : -161);
+  const TDEE = Math.max(1200, (BMR * act) * 0.9);  // ~10% trim for field realism
 
-  let s = 0;
-  if (sex === "male") s = 5;
-  if (sex === "female") s = -161;
+  const protein_g = Math.round(w * (sex === "male" ? 2.0 : 1.6));  // 2.0× BW male, 1.6× female
+  const protein_kcal = protein_g * 4;
 
-const BMR = 10 * w + 6.25 * h - 5 * age + s;
-const TDEE = Math.max(1200, (BMR * act) * 0.9); // 10% lower for real-world field accuracy
+  const remaining_kcal = Math.max(0, TDEE - protein_kcal);
+  const carbs_kcal = remaining_kcal * 0.55;
+  const fat_kcal   = remaining_kcal * 0.45;
 
-let protein_g;
-if (sex === "male") {
-  protein_g = w * 2.0; // midpoint of 1.8–2.2× BW
-} else {
-  protein_g = w * 1.6; // midpoint of 1.5–1.8× BW
-}
+  const carbs_g = Math.round(carbs_kcal / 4);
+  const fat_g   = Math.round(fat_kcal / 9);
 
-// Allocate remaining calories to carbs & fat
-const protein_kcal = protein_g * 4;
-const remaining_kcal = Math.max(0, TDEE - protein_kcal);
-const carbs_kcal = remaining_kcal * 0.55;
-const fat_kcal = remaining_kcal * 0.45;
-
-const carbs_g = carbs_kcal / 4;
-const fat_g = fat_kcal / 9;
-
-
+  // Save ONCE with full data
   saveLead({
     name, phone, email, pref,
     height:h, weight:w, age, sex, activity:act,
-    TDEE: round(TDEE), p: round(protein_g), c: round(carbs_g), f: round(fat_g),
-    ts:new Date().toISOString()
+    TDEE: Math.round(TDEE), p: protein_g, c: carbs_g, f: fat_g,
+    ts: new Date().toISOString()
   });
 
+  // Show results
   document.getElementById('summary').innerText =
-    `${name}, your estimated daily target is ${round(TDEE)} kcal.`;
+    `${name}, your estimated daily target is ${Math.round(TDEE)} kcal.`;
   document.getElementById('macroPills').innerHTML =
-    `<div class="pill">Protein: ${round(protein_g)} g</div>
-     <div class="pill">Carbs: ${round(carbs_g)} g</div>
-     <div class="pill">Fat: ${round(fat_g)} g</div>`;
+    `<div class="pill">Protein: ${protein_g} g</div>
+     <div class="pill">Carbs: ${carbs_g} g</div>
+     <div class="pill">Fat: ${fat_g} g</div>`;
 
   const gram = (x)=> Math.round(x);
-  function meals(pref){
-    if(pref==="veg"){
-      return {
+  const foods = (pref==="veg")
+    ? {
         b:`Overnight oats + chia (50g oats) with Greek yogurt (150g) • Paneer scramble ${gram(protein_g*0.25)}g paneer`,
         l:`Jeera rice (150g cooked) + Dal (200g) + Grilled paneer ${gram(protein_g*0.35)}g + salad`,
         s:`Protein smoothie (plant/whey 1 scoop) + mixed nuts 15g`,
         d:`2 rotis (70g dough each) + tofu/chole ${gram(protein_g*0.30)}g cooked + sautéed veggies`
-      };
-    } else {
-      return {
+      }
+    : {
         b:`Egg white omelette (4 whites + 1 yolk) + toast (2 slices) + fruit`,
         l:`Herb rice (150g cooked) + Grilled chicken ${gram(protein_g*0.40)}g + veggies + salsa`,
         s:`Protein smoothie (whey 1 scoop) or Greek yogurt 200g`,
         d:`2 rotis + chicken curry ${gram(protein_g*0.35)}g or fish 150g + salad`
       };
-    }
-  }
-  const m = meals(pref);
-  document.getElementById('bfast').innerText = m.b;
-  document.getElementById('lunch').innerText = m.l;
-  document.getElementById('snack').innerText = m.s;
-  document.getElementById('dinner').innerText = m.d;
+
+  document.getElementById('bfast').innerText  = foods.b;
+  document.getElementById('lunch').innerText  = foods.l;
+  document.getElementById('snack').innerText  = foods.s;
+  document.getElementById('dinner').innerText = foods.d;
   document.getElementById('results').style.display = "";
 }
 
@@ -262,9 +193,7 @@ function openPromo(){
     alert('Please get your plan first.');
   }
 }
-function closePromo(){
-  document.getElementById('promoOverlay').style.display='none';
-}
+function closePromo(){ document.getElementById('promoOverlay').style.display='none'; }
 </script>
 
 <!-- Promo overlay -->
