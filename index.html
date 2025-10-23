@@ -187,10 +187,25 @@ function run(){
   if (sex === "male") s = 5;
   if (sex === "female") s = -161;
 
-  const BMR = 10*w + 6.25*h - 5*age + s;
-  const TDEE = Math.max(1200, BMR * act);
-  const protein_kcal = TDEE * 0.30, carbs_kcal = TDEE * 0.40, fat_kcal = TDEE * 0.30;
-  const protein_g = protein_kcal / 4, carbs_g = carbs_kcal / 4, fat_g = fat_kcal / 9;
+const BMR = 10 * w + 6.25 * h - 5 * age + s;
+const TDEE = Math.max(1200, (BMR * act) * 0.9); // 10% lower for real-world field accuracy
+
+let protein_g;
+if (sex === "male") {
+  protein_g = w * 2.0; // midpoint of 1.8–2.2× BW
+} else {
+  protein_g = w * 1.6; // midpoint of 1.5–1.8× BW
+}
+
+// Allocate remaining calories to carbs & fat
+const protein_kcal = protein_g * 4;
+const remaining_kcal = Math.max(0, TDEE - protein_kcal);
+const carbs_kcal = remaining_kcal * 0.55;
+const fat_kcal = remaining_kcal * 0.45;
+
+const carbs_g = carbs_kcal / 4;
+const fat_g = fat_kcal / 9;
+
 
   saveLead({
     name, phone, email, pref,
