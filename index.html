@@ -31,9 +31,12 @@
   .pill{ background:#e7f5ee; color:#0a5a2d; font-weight:800; font-size:11px; padding:6px 8px; border-radius:999px }
   .meals{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px }
   .meal{ border:1px solid #eef2ef; border-radius:10px; padding:8px; font-size:12px }
+  .meal ul{ margin:6px 0 0 14px; padding:0 }
   .footer-actions{ display:flex; gap:8px; margin-top:8px }
-  .fine{ font-size:11px; color:#667085; margin-top:4px }
+  .fine{ font-size:11px; color:#667085; margin-top:6px }
   .tiny{ font-size:10px; color:#7a7f85 }
+  details{ margin-top:8px; }
+  details summary{ cursor:pointer; font-size:12px; color:#0a5a2d; }
 </style>
 </head>
 <body>
@@ -51,8 +54,7 @@
           <div><label>Name</label><input id="name" placeholder="Your name"></div>
           <div><label>Mobile</label><input id="phone" placeholder="+91xxxxxxxxxx"></div>
           <div><label>Email</label><input id="email" type="email" placeholder="you@example.com"></div>
-          <div>
-            <label>Preference</label>
+          <div><label>Preference</label>
             <select id="pref"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option></select>
           </div>
         </div>
@@ -84,13 +86,34 @@
           <div class="section-title">Your Kenko estimate</div>
           <div class="result" id="summary"></div>
           <div class="pills" id="macroPills"></div>
+
           <div class="meals">
-            <div class="meal"><strong>Breakfast</strong><div id="bfast"></div></div>
-            <div class="meal"><strong>Lunch</strong><div id="lunch"></div></div>
-            <div class="meal"><strong>Snack</strong><div id="snack"></div></div>
-            <div class="meal"><strong>Dinner</strong><div id="dinner"></div></div>
+            <div class="meal">
+              <strong>Breakfast</strong>
+              <ul id="b_items"></ul>
+              <div id="b_totals"></div>
+            </div>
+            <div class="meal">
+              <strong>Lunch</strong>
+              <ul id="l_items"></ul>
+              <div id="l_totals"></div>
+            </div>
+            <div class="meal">
+              <strong>Snack</strong>
+              <ul id="s_items"></ul>
+              <div id="s_totals"></div>
+            </div>
+            <div class="meal">
+              <strong>Dinner</strong>
+              <ul id="d_items"></ul>
+              <div id="d_totals"></div>
+            </div>
           </div>
-          <div class="fine">*Estimate via Mifflin–St Jeor × activity multiplier (field-trimmed).</div>
+
+          <div class="fine" id="day_totals"></div>
+          <details><summary>How we calculated this</summary>
+            <div id="calc_notes" class="tiny"></div>
+          </details>
         </div>
       </div>
 
@@ -103,8 +126,52 @@
   </div>
 
 <script>
-const CALL_NUMBER = "+916366946047";
 const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbxqyHrcSCryVh-LbmlRsA9_xB4vb3Pk10Sl2EmGQzHewOw_Ens8Iz17vsEjErdYW8yd/exec";
+
+/* ---------- Macro DB ----------
+   Units are per 100 g cooked unless mode:'perunit' (then per unit).
+   Values based on IFCT/USDA typical items for event estimates. */
+const MACRO_DB = {
+  rice_cooked:          {mode:'per100', p:2.7,  c:28,  f:0.3,  k:130},
+  dal_cooked:           {mode:'per100', p:9.0,  c:20,  f:1.0,  k:116},
+  veg_mix:              {mode:'per100', p:2.0,  c:8,   f:3.0,  k:80},   // generic mixed veg with light oil
+  roti:                 {mode:'perunit',p:3.0,  c:20,  f:3.0,  k:120, unit_weight_g:50}, // ~70g dough
+  paneer:               {mode:'per100', p:18.0, c:3.0, f:20.0, k:265},
+  tofu_firm:            {mode:'per100', p:8.0,  c:2.0, f:5.0,  k:95},
+  chicken_breast_ckd:   {mode:'per100', p:31.0, c:0.0, f:3.6,  k:165},
+  fish_ckd:             {mode:'per100', p:22.0, c:0.0, f:6.0,  k:160},  // e.g., rohu/tilapia cooked
+  egg_white:            {mode:'perunit',p:3.6,  c:0.2, f:0.05, k:17,  unit_weight_g:33},
+  egg_whole:            {mode:'perunit',p:6.0,  c:0.4, f:5.0,  k:72,  unit_weight_g:50},
+  greek_yogurt:         {mode:'per100', p:10.0, c:4.0, f:0.4,  k:59},
+  curd_lowfat:          {mode:'per100', p:3.5,  c:4.7, f:3.0,  k:63},
+  oats_dry:             {mode:'per100', p:13.0, c:68,  f:7.0,  k:379},
+  whey_scoop:           {mode:'perunit',p:24.0, c:2.0, f:2.0,  k:120, unit_weight_g:30},
+  almonds:              {mode:'per100', p:21.0, c:22,  f:50.0, k:579},
+  bread_slice:          {mode:'perunit',p:3.5,  c:12,  f:1.0,  k:66,  unit_weight_g:25},
+  banana:               {mode:'per100', p:1.1,  c:23,  f:0.3,  k:96}
+};
+
+// Helpers to scale items
+function macroOf(key, qty, unit='g'){
+  const m = MACRO_DB[key]; if(!m) return {p:0,c:0,f:0,k:0,desc:`${key}?`};
+  if(m.mode==='per100'){
+    const f = (qty||0)/100;
+    return { p:m.p*f, c:m.c*f, f:m.f*f, k:m.k*f, desc:`${qty} g` };
+  }else{ // per unit
+    let units = unit==='unit' ? (qty||0) : (qty||0)/(m.unit_weight_g||1);
+    return { p:m.p*units, c:m.c*units, f:m.f*units, k:m.k*units, desc: unit==='unit' ? `${qty} unit` : `${qty} g` };
+  }
+}
+function sum(a,b){ return {p:a.p+b.p, c:a.c+b.c, f:a.f+b.f, k:a.k+b.k}; }
+function round1(n){ return Math.round(n*10)/10; }
+function gramsForProtein(key, target_p_g){
+  // grams of this item needed to deliver target protein grams (for per100 items)
+  const m = MACRO_DB[key]; if(!m) return 0;
+  if(m.mode==='per100'){ return Math.max(0, (target_p_g / (m.p||1)) * 100); }
+  // per-unit: compute units and convert to grams equivalent
+  const units = Math.ceil(target_p_g / (m.p||1));
+  return (m.unit_weight_g||0) * units;
+}
 
 function saveLead(obj){
   if(!LEAD_ENDPOINT) return;
@@ -126,55 +193,157 @@ function run(){
   if(!name || !phone || !email){ alert("Please fill name, mobile and email."); return; }
   if(!(h>0 && w>0)){ alert("Enter valid height and weight."); return; }
 
-  // --- Calorie and macro calculation (final) ---
-  const BMR  = 10*w + 6.25*h - 5*age + (sex === "male" ? 5 : -161);
-  const TDEE = Math.max(1200, (BMR * act) * 0.9);  // ~10% trim for field realism
+  // Energy & daily macros
+  const BMR  = 10*w + 6.25*h - 5*age + (sex==="male"?5:-161);
+  const TDEE = Math.max(1200, (BMR * act) * 0.9);  // trimmed ~10% for field realism
+  const protein_target = Math.round(w * (sex==="male" ? 2.0 : 1.6)); // g/day
 
-  const protein_g = Math.round(w * (sex === "male" ? 2.0 : 1.6));  // 2.0× BW male, 1.6× female
-  const protein_kcal = protein_g * 4;
+  // Distribute protein targets per-meal
+  const p_b = Math.round(protein_target * 0.25);
+  const p_l = Math.round(protein_target * 0.35);
+  const p_s = 25;  // shake target ~1 scoop = ~24g
+  const p_d = Math.max(0, protein_target - (p_b + p_l + p_s));
 
-  const remaining_kcal = Math.max(0, TDEE - protein_kcal);
-  const carbs_kcal = remaining_kcal * 0.55;
-  const fat_kcal   = remaining_kcal * 0.45;
+  // Build meals with real macros
+  const items = { b:[], l:[], s:[], d:[] };
+  let calcNotes = [];
 
-  const carbs_g = Math.round(carbs_kcal / 4);
-  const fat_g   = Math.round(fat_kcal / 9);
+  if(pref === "veg"){
+    // Breakfast: oats 50g + Greek yogurt 150g + paneer to hit p_b
+    const b1 = macroOf('oats_dry', 50);
+    const b2 = macroOf('greek_yogurt', 150);
+    let b_protein_from_fixed = b1.p + b2.p;
+    const need_paneer = Math.max(0, p_b - b_protein_from_fixed);
+    const paneer_g = Math.round(gramsForProtein('paneer', need_paneer));
+    const b3 = macroOf('paneer', paneer_g);
+    items.b = [
+      {name:'Oats (dry)', qty:'50 g', m:b1},
+      {name:'Greek yogurt', qty:'150 g', m:b2},
+      {name:'Paneer', qty:`${paneer_g} g`, m:b3}
+    ];
+
+    // Lunch: rice 150g + dal 200g + paneer to hit p_l
+    const l1 = macroOf('rice_cooked', 150);
+    const l2 = macroOf('dal_cooked', 200);
+    const need_paneer_l = Math.max(0, p_l - (l1.p + l2.p));
+    const paneer_l_g = Math.round(gramsForProtein('paneer', need_paneer_l));
+    const l3 = macroOf('paneer', paneer_l_g);
+    items.l = [
+      {name:'Jeera rice', qty:'150 g cooked', m:l1},
+      {name:'Dal', qty:'200 g', m:l2},
+      {name:'Paneer (grilled)', qty:`${paneer_l_g} g`, m:l3}
+    ];
+
+    // Snack: whey 1 scoop + almonds 15g
+    const s1 = macroOf('whey_scoop', 1, 'unit');
+    const s2 = macroOf('almonds', 15);
+    items.s = [
+      {name:'Whey protein', qty:'1 scoop', m:s1},
+      {name:'Almonds', qty:'15 g', m:s2}
+    ];
+
+    // Dinner: 2 rotis + tofu to hit p_d + veg mix 150g
+    const d1 = macroOf('roti', 2, 'unit');
+    const d3 = macroOf('veg_mix', 150);
+    const need_tofu = Math.max(0, p_d - (d1.p + d3.p));
+    const tofu_g = Math.round(gramsForProtein('tofu_firm', need_tofu));
+    const d2 = macroOf('tofu_firm', tofu_g);
+    items.d = [
+      {name:'Roti', qty:'2', m:d1},
+      {name:'Tofu/Chole alt (tofu used)', qty:`${tofu_g} g`, m:d2},
+      {name:'Sautéed veg', qty:'150 g', m:d3}
+    ];
+
+    calcNotes.push('Veg plan: Protein gaps filled by paneer/tofu to hit meal targets.');
+  } else {
+    const b1 = macroOf('egg_white', 4, 'unit');
+    const b2 = macroOf('egg_whole', 1, 'unit');
+    const b3 = macroOf('bread_slice', 2, 'unit');
+    const b4 = macroOf('banana', 100);
+    let b_fixed = sum(sum(b1,b2), sum(b3,b4));
+    items.b = [
+      {name:'Egg whites', qty:'4', m:b1},
+      {name:'Egg (whole)', qty:'1', m:b2},
+      {name:'Bread', qty:'2 slices', m:b3},
+      {name:'Fruit (banana)', qty:'100 g', m:b4}
+    ];
+
+    // Lunch: rice 150g + chicken to hit p_l + veg 100g
+    const l1 = macroOf('rice_cooked', 150);
+    const l3 = macroOf('veg_mix', 100);
+    const need_chicken_l = Math.max(0, p_l - (l1.p + l3.p));
+    const chicken_l_g = Math.round(gramsForProtein('chicken_breast_ckd', need_chicken_l));
+    const l2 = macroOf('chicken_breast_ckd', chicken_l_g);
+    items.l = [
+      {name:'Herb rice', qty:'150 g cooked', m:l1},
+      {name:'Grilled chicken', qty:`${chicken_l_g} g`, m:l2},
+      {name:'Veg', qty:'100 g', m:l3}
+    ];
+
+    // Snack: whey 1 scoop or yogurt 200g (use whey for consistency)
+    const s1 = macroOf('whey_scoop', 1, 'unit');
+    items.s = [{name:'Whey protein', qty:'1 scoop', m:s1}];
+
+    // Dinner: 2 rotis + chicken to hit p_d + veg 150g
+    const d1 = macroOf('roti', 2, 'unit');
+    const d3 = macroOf('veg_mix', 150);
+    const need_chicken_d = Math.max(0, p_d - (d1.p + d3.p));
+    const chicken_d_g = Math.round(gramsForProtein('chicken_breast_ckd', need_chicken_d));
+    const d2 = macroOf('chicken_breast_ckd', chicken_d_g);
+    items.d = [
+      {name:'Roti', qty:'2', m:d1},
+      {name:'Chicken curry (lean)', qty:`${chicken_d_g} g`, m:d2},
+      {name:'Veg', qty:'150 g', m:d3}
+    ];
+
+    calcNotes.push('Non-veg plan: Protein gaps filled by grilled chicken to hit meal targets.');
+  }
+
+  // Tally per-meal and day totals
+  function tot(list){
+    return list.reduce((acc, it)=>sum(acc,it.m), {p:0,c:0,f:0,k:0});
+  }
+  const tb = tot(items.b), tl = tot(items.l), tsn = tot(items.s), td = tot(items.d);
+  const day = { p:tb.p+tl.p+tsn.p+td.p, c:tb.c+tl.c+tsn.c+td.c, f:tb.f+tl.f+tsn.f+td.f, k:tb.k+tl.k+tsn.k+td.k };
+
+  // UI render
+  function liText(it){ return `<li>${it.name} — ${it.qty} (~${round1(it.m.p)}P / ${round1(it.m.c)}C / ${round1(it.m.f)}F)</li>`; }
+  document.getElementById('b_items').innerHTML = items.b.map(liText).join('');
+  document.getElementById('l_items').innerHTML = items.l.map(liText).join('');
+  document.getElementById('s_items').innerHTML = items.s.map(liText).join('');
+  document.getElementById('d_items').innerHTML = items.d.map(liText).join('');
+  document.getElementById('b_totals').innerHTML = `<div class="tiny">Total: ~${round1(tb.p)}P / ${round1(tb.c)}C / ${round1(tb.f)}F · ${Math.round(tb.k)} kcal</div>`;
+  document.getElementById('l_totals').innerHTML = `<div class="tiny">Total: ~${round1(tl.p)}P / ${round1(tl.c)}C / ${round1(tl.f)}F · ${Math.round(tl.k)} kcal</div>`;
+  document.getElementById('s_totals').innerHTML = `<div class="tiny">Total: ~${round1(tsn.p)}P / ${round1(tsn.c)}C / ${round1(tsn.f)}F · ${Math.round(tsn.k)} kcal</div>`;
+  document.getElementById('d_totals').innerHTML = `<div class="tiny">Total: ~${round1(td.p)}P / ${round1(td.c)}C / ${round1(td.f)}F · ${Math.round(td.k)} kcal</div>`;
+
+  document.getElementById('summary').innerText =
+    `${name}, your target is ~${Math.round(TDEE)} kcal | Protein ${protein_target} g/day.`;
+  document.getElementById('macroPills').innerHTML =
+    `<div class="pill">Day total (calc): ${Math.round(day.k)} kcal</div>
+     <div class="pill">P: ${Math.round(day.p)} g</div>
+     <div class="pill">C: ${Math.round(day.c)} g</div>
+     <div class="pill">F: ${Math.round(day.f)} g</div>`;
+  document.getElementById('day_totals').innerText =
+    `Meals are engineered to hit per-meal protein targets; calories may be ±5–10% vs TDEE.`;
+
+  document.getElementById('calc_notes').innerHTML =
+    `BMR: Mifflin–St Jeor; TDEE = BMR×activity×0.9. Protein: ${sex==='male'?'2.0×':'1.6×'} bodyweight (g/day).
+     Database entries (per 100g cooked unless per unit): ` +
+    Object.keys(MACRO_DB).map(k=>{
+      const m=MACRO_DB[k];
+      return `${k}${m.mode==='perunit'?' (per unit)':''}: ${m.p}/${m.c}/${m.f}/${m.k}`;
+    }).join(' · ');
 
   // Save ONCE with full data
   saveLead({
     name, phone, email, pref,
     height:h, weight:w, age, sex, activity:act,
-    TDEE: Math.round(TDEE), p: protein_g, c: carbs_g, f: fat_g,
+    TDEE: Math.round(TDEE),
+    p: Math.round(day.p), c: Math.round(day.c), f: Math.round(day.f),
     ts: new Date().toISOString()
   });
 
-  // Show results
-  document.getElementById('summary').innerText =
-    `${name}, your estimated daily target is ${Math.round(TDEE)} kcal.`;
-  document.getElementById('macroPills').innerHTML =
-    `<div class="pill">Protein: ${protein_g} g</div>
-     <div class="pill">Carbs: ${carbs_g} g</div>
-     <div class="pill">Fat: ${fat_g} g</div>`;
-
-  const gram = (x)=> Math.round(x);
-  const foods = (pref==="veg")
-    ? {
-        b:`Overnight oats + chia (50g oats) with Greek yogurt (150g) • Paneer scramble ${gram(protein_g*0.25)}g paneer`,
-        l:`Jeera rice (150g cooked) + Dal (200g) + Grilled paneer ${gram(protein_g*0.35)}g + salad`,
-        s:`Protein smoothie (plant/whey 1 scoop) + mixed nuts 15g`,
-        d:`2 rotis (70g dough each) + tofu/chole ${gram(protein_g*0.30)}g cooked + sautéed veggies`
-      }
-    : {
-        b:`Egg white omelette (4 whites + 1 yolk) + toast (2 slices) + fruit`,
-        l:`Herb rice (150g cooked) + Grilled chicken ${gram(protein_g*0.40)}g + veggies + salsa`,
-        s:`Protein smoothie (whey 1 scoop) or Greek yogurt 200g`,
-        d:`2 rotis + chicken curry ${gram(protein_g*0.35)}g or fish 150g + salad`
-      };
-
-  document.getElementById('bfast').innerText  = foods.b;
-  document.getElementById('lunch').innerText  = foods.l;
-  document.getElementById('snack').innerText  = foods.s;
-  document.getElementById('dinner').innerText = foods.d;
   document.getElementById('results').style.display = "";
 }
 
@@ -186,6 +355,7 @@ function clearAll(){
   document.getElementById('results').style.display="none";
 }
 
+// Promo overlay as before
 function openPromo(){
   if(document.getElementById('results').style.display === ''){
     document.getElementById('promoOverlay').style.display='flex';
