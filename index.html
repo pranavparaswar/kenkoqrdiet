@@ -86,26 +86,10 @@
           <div class="pills" id="macroPills"></div>
 
           <div class="meals">
-            <div class="meal">
-              <strong>Breakfast</strong>
-              <ul id="b_items"></ul>
-              <div id="b_totals"></div>
-            </div>
-            <div class="meal">
-              <strong>Lunch</strong>
-              <ul id="l_items"></ul>
-              <div id="l_totals"></div>
-            </div>
-            <div class="meal">
-              <strong>Snack</strong>
-              <ul id="s_items"></ul>
-              <div id="s_totals"></div>
-            </div>
-            <div class="meal">
-              <strong>Dinner</strong>
-              <ul id="d_items"></ul>
-              <div id="d_totals"></div>
-            </div>
+            <div class="meal"><strong>Breakfast</strong><ul id="b_items"></ul><div id="b_totals"></div></div>
+            <div class="meal"><strong>Lunch</strong><ul id="l_items"></ul><div id="l_totals"></div></div>
+            <div class="meal"><strong>Snack</strong><ul id="s_items"></ul><div id="s_totals"></div></div>
+            <div class="meal"><strong>Dinner</strong><ul id="d_items"></ul><div id="d_totals"></div></div>
           </div>
 
           <div class="fine" id="day_totals"></div>
@@ -121,7 +105,7 @@
   </div>
 
 <script>
-const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbwJbpQ-xbx20UcfOfFboFfMM0AtjSuD06gfbhFbocDe_Yi22ySG8IsJvrvIWszssMln/exec";
+const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbwX8G0fjvwlxmOHGPMHmzG4-5fkiqGqZV4C_coR3C2djNt29WH43nT9Ce2P2bY0Wu_U/exec";
 
 /* ---------- Macro DB (per 100g cooked unless perunit) ---------- */
 const MACRO_DB = {
@@ -136,7 +120,6 @@ const MACRO_DB = {
   egg_white:{mode:'perunit',p:3.6,c:0.2,f:0.05,k:17,unit_weight_g:33},
   egg_whole:{mode:'perunit',p:6.0,c:0.4,f:5.0,k:72,unit_weight_g:50},
   greek_yogurt:{mode:'per100',p:10.0,c:4.0,f:0.4,k:59},
-  curd_lowfat:{mode:'per100',p:3.5,c:4.7,f:3.0,k:63},
   oats_dry:{mode:'per100',p:13.0,c:68,f:7.0,k:379},
   whey_scoop:{mode:'perunit',p:24.0,c:2.0,f:2.0,k:120,unit_weight_g:30},
   almonds:{mode:'per100',p:21.0,c:22,f:50.0,k:579},
@@ -161,10 +144,18 @@ function gramsForProtein(key, target_p_g){
   const units = Math.ceil(target_p_g / (m.p||1));
   return (m.unit_weight_g||0) * units;
 }
+
+/* ---------- Fixed saveLead (sends correct headers) ---------- */
 function saveLead(obj){
   if(!LEAD_ENDPOINT) return;
-  const p = new URLSearchParams(obj);
-  fetch(LEAD_ENDPOINT, { method:"POST", body:p }).catch(()=>{});
+  fetch(LEAD_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(obj)
+  })
+  .then(res => res.text())
+  .then(txt => console.log("Lead saved:", txt))
+  .catch(err => console.error("Save failed:", err));
 }
 
 function run(){
@@ -181,49 +172,41 @@ function run(){
   if(!name || !phone || !email){ alert("Please fill name, mobile and email."); return; }
   if(!(h>0 && w>0)){ alert("Enter valid height and weight."); return; }
 
-  // Energy & daily protein target
   const BMR  = 10*w + 6.25*h - 5*age + (sex==="male" ? 5 : -161);
-  const TDEE = Math.max(1200, (BMR * act) * 0.9);     // ~10% trimmed
-  const protein_target = Math.round(w * (sex==="male" ? 2.0 : 1.6)); // g/day
+  const TDEE = Math.max(1200, (BMR * act) * 0.9);
+  const protein_target = Math.round(w * (sex==="male" ? 2.0 : 1.6));
 
-  // Per-meal protein goals
   const p_b = Math.round(protein_target * 0.25);
   const p_l = Math.round(protein_target * 0.35);
-  const p_s = 25; // 1 scoop whey ≈ 24–25 g
+  const p_s = 25;
   const p_d = Math.max(0, protein_target - (p_b + p_l + p_s));
 
-  // Build meals
   const items = { b:[], l:[], s:[], d:[] };
   const make = (name, qty, m) => ({ name, qty, m });
 
   if(pref === "veg"){
-    // Breakfast: oats 50g + Greek yogurt 150g + paneer to hit p_b
     const b1 = macroOf('oats_dry', 50);
     const b2 = macroOf('greek_yogurt', 150);
     const paneer_g = Math.round(gramsForProtein('paneer', Math.max(0, p_b - (b1.p + b2.p))));
     const b3 = macroOf('paneer', paneer_g);
     items.b = [ make('Oats (dry)', '50 g', b1), make('Greek yogurt', '150 g', b2), make('Paneer', `${paneer_g} g`, b3) ];
 
-    // Lunch: rice 150g + dal 200g + paneer to hit p_l
     const l1 = macroOf('rice_cooked', 150);
     const l2 = macroOf('dal_cooked', 200);
     const paneer_l_g = Math.round(gramsForProtein('paneer', Math.max(0, p_l - (l1.p + l2.p))));
     const l3 = macroOf('paneer', paneer_l_g);
     items.l = [ make('Jeera rice', '150 g cooked', l1), make('Dal', '200 g', l2), make('Paneer (grilled)', `${paneer_l_g} g`, l3) ];
 
-    // Snack: whey 1 scoop + almonds 15g
     const s1 = macroOf('whey_scoop', 1, 'unit');
     const s2 = macroOf('almonds', 15);
     items.s = [ make('Whey protein', '1 scoop', s1), make('Almonds', '15 g', s2) ];
 
-    // Dinner: 2 rotis + tofu to hit p_d + veg 150g
     const d1 = macroOf('roti', 2, 'unit');
     const d3 = macroOf('veg_mix', 150);
     const tofu_g = Math.round(gramsForProtein('tofu_firm', Math.max(0, p_d - (d1.p + d3.p))));
     const d2 = macroOf('tofu_firm', tofu_g);
     items.d = [ make('Roti', '2', d1), make('Tofu', `${tofu_g} g`, d2), make('Sautéed veg', '150 g', d3) ];
   } else {
-    // Non-veg
     const b1 = macroOf('egg_white', 4, 'unit');
     const b2 = macroOf('egg_whole', 1, 'unit');
     const b3 = macroOf('bread_slice', 2, 'unit');
@@ -246,12 +229,10 @@ function run(){
     items.d = [ make('Roti', '2', d1), make('Chicken (lean curry)', `${chicken_d_g} g`, d2), make('Veg', '150 g', d3) ];
   }
 
-  // Totals
   const tot = arr => arr.reduce((acc, it)=>sum(acc, it.m), {p:0,c:0,f:0,k:0});
   const tb = tot(items.b), tl = tot(items.l), ts = tot(items.s), td = tot(items.d);
   const day = { p:tb.p+tl.p+ts.p+td.p, c:tb.c+tl.c+ts.c+td.c, f:tb.f+tl.f+ts.f+td.f, k:tb.k+tl.k+ts.k+td.k };
 
-  // Render
   const li = it => `<li>${it.name} — ${it.qty} (~${round1(it.m.p)}P / ${round1(it.m.c)}C / ${round1(it.m.f)}F)</li>`;
   document.getElementById('b_items').innerHTML = items.b.map(li).join('');
   document.getElementById('l_items').innerHTML = items.l.map(li).join('');
@@ -272,7 +253,6 @@ function run(){
   document.getElementById('day_totals').innerText =
     `Meals are engineered to hit per-meal protein; calories may be ±5–10% vs TDEE.`;
 
-  // Save ONCE with full data (aligns with your Apps Script header)
   saveLead({
     name, phone, email, pref,
     height:h, weight:w, age, sex, activity:act,
