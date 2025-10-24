@@ -146,17 +146,16 @@ function gramsForProtein(key, target_p_g){
 }
 
 /* ---------- Fixed saveLead (sends correct headers) ---------- */
-function saveLead(obj){
-  if(!LEAD_ENDPOINT) return;
-  fetch(LEAD_ENDPOINT, {
+function saveLead(obj) {
+  fetch("https://sheetdb.io/api/v1/z8t6n6g32sh56", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(obj)
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ data: [obj] })
   })
-  .then(res => res.text())
-  .then(txt => console.log("Lead saved:", txt))
-  .catch(err => console.error("Save failed:", err));
+  .then(res => console.log("Saved!", res.status))
+  .catch(err => console.error("Failed:", err));
 }
+
 
 function run(){
   const name = document.getElementById('name').value.trim();
