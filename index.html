@@ -105,8 +105,6 @@
   </div>
 
 <script>
-const LEAD_ENDPOINT = "https://script.google.com/macros/s/AKfycbzEGbJPUNBEVHUM9IcOiNYM8if9HdIox4etcN1T74PeOo9om7LUQ_1EvHs29U8Hg7SQ/exec";
-
 /* ---------- Macro DB (per 100g cooked unless perunit) ---------- */
 const MACRO_DB = {
   rice_cooked:{mode:'per100',p:2.7,c:28,f:0.3,k:130},
@@ -145,18 +143,68 @@ function gramsForProtein(key, target_p_g){
   return (m.unit_weight_g||0) * units;
 }
 
-/* ---------- Fixed saveLead (sends correct headers) ---------- */
-function saveLead(obj) {
-  fetch("https://sheetdb.io/api/v1/z8t6n6g32sh56", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ data: [obj] })
-  })
-  .then(res => console.log("Saved!", res.status))
-  .catch(err => console.error("Failed:", err));
+/* ---------- helpers to add real food for calories ---------- */
+function addStep(items, where, label, key, qty, unit='g'){
+  const m = macroOf(key, qty, unit);
+  items[where].push({ name: label, qty: unit==='unit' ? String(qty) : `${qty} ${unit}`, m });
+  return m.k;
+}
+function totals(items){
+  const tot = arr => arr.reduce((acc, it)=>sum(acc, it.m), {p:0,c:0,f:0,k:0});
+  const tb = tot(items.b), tl = tot(items.l), ts = tot(items.s), td = tot(items.d);
+  return { tb, tl, ts, td, day: { p:tb.p+tl.p+ts.p+td.p, c:tb.c+tl.c+ts.c+td.c, f:tb.f+tl.f+ts.f+td.f, k:tb.k+tl.k+ts.k+td.k } };
+}
+function balanceCaloriesToTDEE(pref, items, TDEE){
+  // Add carbs first, some fats later, cycle steps until we land within ±100 kcal
+  let { day } = totals(items);
+  let gap = Math.round(TDEE - day.k);
+  let safety = 0;
+
+  // Predefine steps per preference (each call adds real food to a meal)
+  const steps = (pref === 'veg')
+    ? [
+        (it)=>addStep(it,'l','Extra rice', 'rice_cooked', 50),        // ~65 kcal
+        (it)=>addStep(it,'d','Extra roti', 'roti', 1, 'unit'),         // ~120 kcal
+        (it)=>addStep(it,'b','Fruit (banana)', 'banana', 100),         // ~96 kcal
+        (it)=>addStep(it,'s','Almonds (extra)', 'almonds', 10),        // ~58 kcal (fat boost)
+        (it)=>addStep(it,'l','Extra rice', 'rice_cooked', 50),
+      ]
+    : [
+        (it)=>addStep(it,'l','Extra rice', 'rice_cooked', 50),
+        (it)=>addStep(it,'d','Extra roti', 'roti', 1, 'unit'),
+        (it)=>addStep(it,'b','Fruit (banana)', 'banana', 100),
+        (it)=>addStep(it,'b','Bread (extra slice)', 'bread_slice', 1, 'unit'),
+        (it)=>addStep(it,'s','Almonds (extra)', 'almonds', 10),
+      ];
+
+  let idx = 0;
+  while (gap > 100 && safety < 50) { // stop when we're within ±100 kcal
+    const added = steps[idx % steps.length](items);
+    day.k += added;
+    gap = Math.round(TDEE - day.k);
+    idx++; safety++;
+  }
 }
 
+/* ---------- SheetDB save ---------- */
+function saveLead(obj) {
+  const payload = {
+    ts_recv: new Date().toISOString(),
+    name: obj.name, phone: obj.phone, email: obj.email, pref: obj.pref,
+    height: obj.height, weight: obj.weight, age: obj.age, sex: obj.sex,
+    activity: obj.activity, TDEE: obj.TDEE, p: obj.p, c: obj.c, f: obj.f,
+    ts_raw: obj.ts
+  };
+  fetch("https://sheetdb.io/api/v1/z8t6n6g32sh56", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: [payload] })
+  })
+  .then(res => console.log("Saved to SheetDB:", res.status))
+  .catch(err => console.error("SheetDB save failed:", err));
+}
 
+/* ---------- main ---------- */
 function run(){
   const name = document.getElementById('name').value.trim();
   const phone = document.getElementById('phone').value.trim();
@@ -228,9 +276,11 @@ function run(){
     items.d = [ make('Roti', '2', d1), make('Chicken (lean curry)', `${chicken_d_g} g`, d2), make('Veg', '150 g', d3) ];
   }
 
-  const tot = arr => arr.reduce((acc, it)=>sum(acc, it.m), {p:0,c:0,f:0,k:0});
-  const tb = tot(items.b), tl = tot(items.l), ts = tot(items.s), td = tot(items.d);
-  const day = { p:tb.p+tl.p+ts.p+td.p, c:tb.c+tl.c+ts.c+td.c, f:tb.f+tl.f+ts.f+td.f, k:tb.k+tl.k+ts.k+td.k };
+  // --- Balance calories using real food additions ---
+  balanceCaloriesToTDEE(pref, items, TDEE);
+
+  // --- Tally & render ---
+  const { tb, tl, ts, td, day } = totals(items);
 
   const li = it => `<li>${it.name} — ${it.qty} (~${round1(it.m.p)}P / ${round1(it.m.c)}C / ${round1(it.m.f)}F)</li>`;
   document.getElementById('b_items').innerHTML = items.b.map(li).join('');
@@ -250,8 +300,9 @@ function run(){
      <div class="pill">C: ${Math.round(day.c)} g</div>
      <div class="pill">F: ${Math.round(day.f)} g</div>`;
   document.getElementById('day_totals').innerText =
-    `Meals are engineered to hit per-meal protein; calories may be ±5–10% vs TDEE.`;
+    `Meals are scaled with real foods to land within ~±100 kcal of your TDEE.`;
 
+  // Save lead to SheetDB
   saveLead({
     name, phone, email, pref,
     height:h, weight:w, age, sex, activity:act,
@@ -270,7 +321,6 @@ function clearAll(){
   document.getElementById('activity').value="1.2";
   document.getElementById('results').style.display="none";
 }
-
 function openPromo(){
   if(document.getElementById('results').style.display === ''){
     document.getElementById('promoOverlay').style.display='flex';
