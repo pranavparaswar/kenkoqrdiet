@@ -148,19 +148,15 @@ function gramsForProtein(key, target_p_g){
 /* ---------- Fixed saveLead (sends correct headers) ---------- */
 function saveLead(obj){
   if(!LEAD_ENDPOINT) return;
-  
-  // Build query string from the object
-  const query = new URLSearchParams(obj).toString();
-  
-  // Use GET to avoid redirect + CORS issues on POST
-  fetch(`${LEAD_ENDPOINT}?${query}`, {
-    method: "GET",
-    mode: "no-cors"
+  fetch(LEAD_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(obj)
   })
-  .then(() => console.log("Lead saved via GET"))
+  .then(res => res.text())
+  .then(txt => console.log("Lead saved:", txt))
   .catch(err => console.error("Save failed:", err));
 }
-
 
 function run(){
   const name = document.getElementById('name').value.trim();
