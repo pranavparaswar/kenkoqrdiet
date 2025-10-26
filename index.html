@@ -51,7 +51,6 @@
         <div class="row3">
           <div><label>Name</label><input id="name" placeholder="Your name"></div>
           <div><label>Mobile</label><input id="phone" placeholder="+91xxxxxxxxxx"></div>
-          <div><label>Email</label><input id="email" type="email" placeholder="you@example.com"></div>
           <div><label>Preference</label>
             <select id="pref"><option value="veg">Veg</option><option value="nonveg">Non-Veg</option></select>
           </div>
@@ -71,6 +70,14 @@
               <option value="1.375">Light (1–3x/wk)</option>
               <option value="1.55">Moderate (3–5x/wk)</option>
               <option value="1.725">Intense (6–7x/wk)</option>
+            </select>
+          </div>
+          <div>
+            <label>Goal</label>
+            <select id="goal">
+              <option value="loss">Weight loss</option>
+              <option value="maintain" selected>Maintain</option>
+              <option value="gain">Muscle/Weight gain</option>
             </select>
           </div>
         </div>
@@ -125,6 +132,27 @@ const MACRO_DB = {
   banana:{mode:'per100',p:1.1,c:23,f:0.3,k:96}
 };
 
+/* Name→key map for trimming */
+const NAME_KEY = {
+  'Jeera rice':'rice_cooked','Rice':'rice_cooked',
+  'Roti':'roti',
+  'Bread':'bread_slice',
+  'Fruit (banana)':'banana',
+  'Almonds':'almonds'
+};
+const NAME_UNIT = {
+  'Jeera rice':'g','Rice':'g',
+  'Roti':'unit',
+  'Bread':'unit',
+  'Fruit (banana)':'g',
+  'Almonds':'g'
+};
+
+/* ---------- utils ---------- */
+const roundTo = (n, step=1) => Math.round(n/step)*step;
+const round10 = n => roundTo(n,10);
+const round5  = n => roundTo(n,5);
+
 function macroOf(key, qty, unit='g'){
   const m = MACRO_DB[key]; if(!m) return {p:0,c:0,f:0,k:0};
   if(m.mode==='per100'){
@@ -135,65 +163,110 @@ function macroOf(key, qty, unit='g'){
   return { p:m.p*units, c:m.c*units, f:m.f*units, k:m.k*units };
 }
 function sum(a,b){ return {p:a.p+b.p, c:a.c+b.c, f:a.f+b.f, k:a.k+b.k}; }
-function round1(n){ return Math.round(n*10)/10; }
 function gramsForProtein(key, target_p_g){
   const m = MACRO_DB[key]; if(!m) return 0;
-  if(m.mode==='per100') return Math.max(0, (target_p_g / (m.p||1)) * 100);
+  if(m.mode==='per100'){
+    const g = Math.max(0, (target_p_g / (m.p||1)) * 100);
+    return round5(g);
+  }
   const units = Math.ceil(target_p_g / (m.p||1));
-  return (m.unit_weight_g||0) * units;
+  return (m.unit_weight_g||0) * units; // units already whole
 }
 
-/* ---------- helpers to add real food for calories ---------- */
-function addStep(items, where, label, key, qty, unit='g'){
-  const m = macroOf(key, qty, unit);
-  items[where].push({ name: label, qty: unit==='unit' ? String(qty) : `${qty} ${unit}`, m });
-  return m.k;
+function makeItem(name, key, qtyNum, unit='g'){
+  qtyNum = (unit==='unit') ? Math.max(0, Math.round(qtyNum)) : round5(Math.max(0, qtyNum));
+  const m = macroOf(key, qtyNum, unit);
+  const qtyText = (unit==='unit')
+      ? String(qtyNum) + (name==='Bread' ? ' slices' : '')
+      : `${qtyNum} g`;
+  return { name, key, unit, qtyNum, qtyText, m };
 }
+function recalcItem(it){
+  it.qtyNum = (it.unit==='unit') ? Math.max(0, Math.round(it.qtyNum)) : round5(Math.max(0, it.qtyNum));
+  it.m = macroOf(it.key, it.qtyNum, it.unit);
+  it.qtyText = (it.unit==='unit') ? String(it.qtyNum) + (it.name==='Bread' ? ' slices' : '') : `${it.qtyNum} g`;
+}
+
 function totals(items){
   const tot = arr => arr.reduce((acc, it)=>sum(acc, it.m), {p:0,c:0,f:0,k:0});
   const tb = tot(items.b), tl = tot(items.l), ts = tot(items.s), td = tot(items.d);
   return { tb, tl, ts, td, day: { p:tb.p+tl.p+ts.p+td.p, c:tb.c+tl.c+ts.c+td.c, f:tb.f+tl.f+ts.f+td.f, k:tb.k+tl.k+ts.k+td.k } };
 }
-function balanceCaloriesToTDEE(pref, items, TDEE){
-  // Add carbs first, some fats later, cycle steps until we land within ±100 kcal
+
+/* Trim/add helpers (adjust selected high-calorie items by steps) */
+function adjust(items, mealKey, itemName, delta){
+  const key = NAME_KEY[itemName]; const unit = NAME_UNIT[itemName];
+  const arr = items[mealKey];
+  const idx = arr.findIndex(x => x.name === itemName);
+  if(idx === -1) return false;
+  const it = arr[idx];
+  it.qtyNum = it.qtyNum + delta;
+  // floors so we don't go to weird values
+  if(itemName==='Jeera rice' || itemName==='Rice') it.qtyNum = Math.max(50, it.qtyNum);
+  if(itemName==='Roti') it.qtyNum = Math.max(0, it.qtyNum);
+  if(itemName==='Bread') it.qtyNum = Math.max(0, it.qtyNum);
+  if(itemName==='Fruit (banana)' || itemName==='Almonds') it.qtyNum = Math.max(0, it.qtyNum);
+  recalcItem(it);
+  return true;
+}
+
+/* Balance to target kcal by adding OR trimming */
+function balanceCaloriesToTarget(pref, items, targetKcal){
+  const threshold = 75; // aim window
   let { day } = totals(items);
-  let gap = Math.round(TDEE - day.k);
+  let gap = Math.round(targetKcal - day.k);
   let safety = 0;
 
-  // Predefine steps per preference (each call adds real food to a meal)
-  const steps = (pref === 'veg')
+  // Steps to add calories
+  const addSteps = (pref === 'veg')
     ? [
-        (it)=>addStep(it,'l','Extra rice', 'rice_cooked', 50),        // ~65 kcal
-        (it)=>addStep(it,'d','Extra roti', 'roti', 1, 'unit'),         // ~120 kcal
-        (it)=>addStep(it,'b','Fruit (banana)', 'banana', 100),         // ~96 kcal
-        (it)=>addStep(it,'s','Almonds (extra)', 'almonds', 10),        // ~58 kcal (fat boost)
-        (it)=>addStep(it,'l','Extra rice', 'rice_cooked', 50),
+        ()=>adjust(items,'l','Jeera rice', 50),
+        ()=>adjust(items,'d','Roti', 1),
+        ()=>adjust(items,'b','Fruit (banana)', 100),
+        ()=>adjust(items,'s','Almonds', 10),
+        ()=>adjust(items,'l','Jeera rice', 50),
+        ()=>adjust(items,'b','Bread', 1),
       ]
     : [
-        (it)=>addStep(it,'l','Extra rice', 'rice_cooked', 50),
-        (it)=>addStep(it,'d','Extra roti', 'roti', 1, 'unit'),
-        (it)=>addStep(it,'b','Fruit (banana)', 'banana', 100),
-        (it)=>addStep(it,'b','Bread (extra slice)', 'bread_slice', 1, 'unit'),
-        (it)=>addStep(it,'s','Almonds (extra)', 'almonds', 10),
+        ()=>adjust(items,'l','Rice', 50),
+        ()=>adjust(items,'d','Roti', 1),
+        ()=>adjust(items,'b','Fruit (banana)', 100),
+        ()=>adjust(items,'b','Bread', 1),
+        ()=>adjust(items,'s','Almonds', 10),
       ];
 
-  let idx = 0;
-  while (gap > 100 && safety < 50) { // stop when we're within ±100 kcal
-    const added = steps[idx % steps.length](items);
-    day.k += added;
-    gap = Math.round(TDEE - day.k);
-    idx++; safety++;
+  // Steps to trim calories (reverse order of energy density)
+  const trimSteps = [
+    ()=>adjust(items,'s','Almonds', -10),
+    ()=>adjust(items,'b','Fruit (banana)', -100),
+    ()=>adjust(items,'b','Bread', -1),
+    ()=>adjust(items,'d','Roti', -1),
+    ()=>adjust(items,'l', pref==='veg' ? 'Jeera rice':'Rice', -50),
+  ];
+
+  let addIdx=0, trimIdx=0;
+  while (Math.abs(gap) > threshold && safety < 100) {
+    if (gap > threshold) { // under target -> add
+      const ok = addSteps[addIdx % addSteps.length]();
+      addIdx++;
+    } else { // over target -> trim
+      const ok = trimSteps[trimIdx % trimSteps.length]();
+      trimIdx++;
+    }
+    day = totals(items).day;
+    gap = Math.round(targetKcal - day.k);
+    safety++;
   }
 }
 
-/* ---------- SheetDB save ---------- */
+/* ---------- SheetDB (no email) ---------- */
 function saveLead(obj) {
   const payload = {
     ts_recv: new Date().toISOString(),
-    name: obj.name, phone: obj.phone, email: obj.email, pref: obj.pref,
+    name: obj.name, phone: obj.phone, pref: obj.pref,
     height: obj.height, weight: obj.weight, age: obj.age, sex: obj.sex,
-    activity: obj.activity, TDEE: obj.TDEE, p: obj.p, c: obj.c, f: obj.f,
-    ts_raw: obj.ts
+    activity: obj.activity, TDEE_base: obj.TDEE_base, TDEE_target: obj.TDEE_target,
+    goal: obj.goal, p: obj.p, c: obj.c, f: obj.f, ts_raw: obj.ts
   };
   fetch("https://sheetdb.io/api/v1/z8t6n6g32sh56", {
     method: "POST",
@@ -208,105 +281,128 @@ function saveLead(obj) {
 function run(){
   const name = document.getElementById('name').value.trim();
   const phone = document.getElementById('phone').value.trim();
-  const email = document.getElementById('email').value.trim();
   const pref = document.getElementById('pref').value;
   const h = parseFloat(document.getElementById('height').value);
   const w = parseFloat(document.getElementById('weight').value);
   const age = parseFloat(document.getElementById('age').value || "28");
   const sex = document.getElementById('sex').value || "male";
   const act = parseFloat(document.getElementById('activity').value);
+  const goal = document.getElementById('goal').value;
 
-  if(!name || !phone || !email){ alert("Please fill name, mobile and email."); return; }
+  if(!name || !phone){ alert("Please fill name and mobile."); return; }
   if(!(h>0 && w>0)){ alert("Enter valid height and weight."); return; }
 
+  // Base TDEE
   const BMR  = 10*w + 6.25*h - 5*age + (sex==="male" ? 5 : -161);
-  const TDEE = Math.max(1200, (BMR * act) * 0.9);
+  const TDEE_base_raw = Math.max(1200, (BMR * act) * 0.9);
+  const TDEE_base = round10(TDEE_base_raw);
+
+  // Adjust for goal (hidden percentages)
+  let TDEE_target_raw = TDEE_base_raw;
+  if(goal === 'loss') TDEE_target_raw = TDEE_base_raw * 0.85;     // -15%
+  else if(goal === 'gain') TDEE_target_raw = TDEE_base_raw * 1.12; // +12%
+  const TDEE_target = round10(TDEE_target_raw);
+
+  // Protein target (kept independent of goal)
   const protein_target = Math.round(w * (sex==="male" ? 2.0 : 1.6));
 
+  // Protein split
   const p_b = Math.round(protein_target * 0.25);
   const p_l = Math.round(protein_target * 0.35);
   const p_s = 25;
   const p_d = Math.max(0, protein_target - (p_b + p_l + p_s));
 
   const items = { b:[], l:[], s:[], d:[] };
-  const make = (name, qty, m) => ({ name, qty, m });
 
   if(pref === "veg"){
-    const b1 = macroOf('oats_dry', 50);
-    const b2 = macroOf('greek_yogurt', 150);
-    const paneer_g = Math.round(gramsForProtein('paneer', Math.max(0, p_b - (b1.p + b2.p))));
-    const b3 = macroOf('paneer', paneer_g);
-    items.b = [ make('Oats (dry)', '50 g', b1), make('Greek yogurt', '150 g', b2), make('Paneer', `${paneer_g} g`, b3) ];
+    // Breakfast
+    const b1 = makeItem('Oats (dry)','oats_dry', 50,'g');
+    const b2 = makeItem('Greek yogurt','greek_yogurt', 150,'g');
+    const paneer_g = gramsForProtein('paneer', Math.max(0, p_b - (b1.m.p + b2.m.p)));
+    const b3 = makeItem('Paneer','paneer', paneer_g,'g');
+    items.b = [ b1, b2, b3 ];
 
-    const l1 = macroOf('rice_cooked', 150);
-    const l2 = macroOf('dal_cooked', 200);
-    const paneer_l_g = Math.round(gramsForProtein('paneer', Math.max(0, p_l - (l1.p + l2.p))));
-    const l3 = macroOf('paneer', paneer_l_g);
-    items.l = [ make('Jeera rice', '150 g cooked', l1), make('Dal', '200 g', l2), make('Paneer (grilled)', `${paneer_l_g} g`, l3) ];
+    // Lunch
+    const l1 = makeItem('Jeera rice','rice_cooked', 150,'g');
+    const l2 = makeItem('Dal','dal_cooked', 200,'g');
+    const paneer_l_g = gramsForProtein('paneer', Math.max(0, p_l - (l1.m.p + l2.m.p)));
+    const l3 = makeItem('Paneer (grilled)','paneer', paneer_l_g,'g');
+    items.l = [ l1, l2, l3 ];
 
-    const s1 = macroOf('whey_scoop', 1, 'unit');
-    const s2 = macroOf('almonds', 15);
-    items.s = [ make('Whey protein', '1 scoop', s1), make('Almonds', '15 g', s2) ];
+    // Snack
+    const s1 = makeItem('Whey protein','whey_scoop', 1,'unit');
+    const s2 = makeItem('Almonds','almonds', 15,'g');
+    items.s = [ s1, s2 ];
 
-    const d1 = macroOf('roti', 2, 'unit');
-    const d3 = macroOf('veg_mix', 150);
-    const tofu_g = Math.round(gramsForProtein('tofu_firm', Math.max(0, p_d - (d1.p + d3.p))));
-    const d2 = macroOf('tofu_firm', tofu_g);
-    items.d = [ make('Roti', '2', d1), make('Tofu', `${tofu_g} g`, d2), make('Sautéed veg', '150 g', d3) ];
+    // Dinner
+    const d1 = makeItem('Roti','roti', 2,'unit');
+    const d3 = makeItem('Sautéed veg','veg_mix', 150,'g');
+    const tofu_g = gramsForProtein('tofu_firm', Math.max(0, p_d - (d1.m.p + d3.m.p)));
+    const d2 = makeItem('Tofu','tofu_firm', tofu_g,'g');
+    items.d = [ d1, d2, d3 ];
   } else {
-    const b1 = macroOf('egg_white', 4, 'unit');
-    const b2 = macroOf('egg_whole', 1, 'unit');
-    const b3 = macroOf('bread_slice', 2, 'unit');
-    const b4 = macroOf('banana', 100);
-    items.b = [ make('Egg whites', '4', b1), make('Egg (whole)', '1', b2), make('Bread', '2 slices', b3), make('Fruit (banana)', '100 g', b4) ];
+    // Breakfast
+    const b1 = makeItem('Egg whites','egg_white', 4,'unit');
+    const b2 = makeItem('Egg (whole)','egg_whole', 1,'unit');
+    const b3 = makeItem('Bread','bread_slice', 2,'unit');
+    const b4 = makeItem('Fruit (banana)','banana', 100,'g');
+    items.b = [ b1, b2, b3, b4 ];
 
-    const l1 = macroOf('rice_cooked', 150);
-    const l3 = macroOf('veg_mix', 100);
-    const chicken_l_g = Math.round(gramsForProtein('chicken_breast_ckd', Math.max(0, p_l - (l1.p + l3.p))));
-    const l2 = macroOf('chicken_breast_ckd', chicken_l_g);
-    items.l = [ make('Rice', '150 g cooked', l1), make('Grilled chicken', `${chicken_l_g} g`, l2), make('Veg', '100 g', l3) ];
+    // Lunch
+    const l1 = makeItem('Rice','rice_cooked', 150,'g');
+    const l3 = makeItem('Veg','veg_mix', 100,'g');
+    const chicken_l_g = gramsForProtein('chicken_breast_ckd', Math.max(0, p_l - (l1.m.p + l3.m.p)));
+    const l2 = makeItem('Grilled chicken','chicken_breast_ckd', chicken_l_g,'g');
+    items.l = [ l1, l2, l3 ];
 
-    const s1 = macroOf('whey_scoop', 1, 'unit');
-    items.s = [ make('Whey protein', '1 scoop', s1) ];
+    // Snack
+    const s1 = makeItem('Whey protein','whey_scoop', 1,'unit');
+    items.s = [ s1 ];
 
-    const d1 = macroOf('roti', 2, 'unit');
-    const d3 = macroOf('veg_mix', 150);
-    const chicken_d_g = Math.round(gramsForProtein('chicken_breast_ckd', Math.max(0, p_d - (d1.p + d3.p))));
-    const d2 = macroOf('chicken_breast_ckd', chicken_d_g);
-    items.d = [ make('Roti', '2', d1), make('Chicken (lean curry)', `${chicken_d_g} g`, d2), make('Veg', '150 g', d3) ];
+    // Dinner
+    const d1 = makeItem('Roti','roti', 2,'unit');
+    const d3 = makeItem('Veg','veg_mix', 150,'g');
+    const chicken_d_g = gramsForProtein('chicken_breast_ckd', Math.max(0, p_d - (d1.m.p + d3.m.p)));
+    const d2 = makeItem('Chicken (lean curry)','chicken_breast_ckd', chicken_d_g,'g');
+    items.d = [ d1, d2, d3 ];
   }
 
-  // --- Balance calories using real food additions ---
-  balanceCaloriesToTDEE(pref, items, TDEE);
+  // Balance to goal-adjusted target (add OR trim)
+  balanceCaloriesToTarget(pref, items, TDEE_target);
 
-  // --- Tally & render ---
+  // Tally & render
   const { tb, tl, ts, td, day } = totals(items);
 
-  const li = it => `<li>${it.name} — ${it.qty} (~${round1(it.m.p)}P / ${round1(it.m.c)}C / ${round1(it.m.f)}F)</li>`;
+  const li = it => `<li>${it.name} — ${it.qtyText} (~${Math.round(it.m.p)}P / ${Math.round(it.m.c)}C / ${Math.round(it.m.f)}F)</li>`;
   document.getElementById('b_items').innerHTML = items.b.map(li).join('');
   document.getElementById('l_items').innerHTML = items.l.map(li).join('');
   document.getElementById('s_items').innerHTML = items.s.map(li).join('');
   document.getElementById('d_items').innerHTML = items.d.map(li).join('');
-  document.getElementById('b_totals').innerHTML = `<div class="tiny">Total: ${round1(tb.p)}P / ${round1(tb.c)}C / ${round1(tb.f)}F · ${Math.round(tb.k)} kcal</div>`;
-  document.getElementById('l_totals').innerHTML = `<div class="tiny">Total: ${round1(tl.p)}P / ${round1(tl.c)}C / ${round1(tl.f)}F · ${Math.round(tl.k)} kcal</div>`;
-  document.getElementById('s_totals').innerHTML = `<div class="tiny">Total: ${round1(ts.p)}P / ${round1(ts.c)}C / ${round1(ts.f)}F · ${Math.round(ts.k)} kcal</div>`;
-  document.getElementById('d_totals').innerHTML = `<div class="tiny">Total: ${round1(td.p)}P / ${round1(td.c)}C / ${round1(td.f)}F · ${Math.round(td.k)} kcal</div>`;
 
+  document.getElementById('b_totals').innerHTML = `<div class="tiny">Total: ${Math.round(tb.p)}P / ${Math.round(tb.c)}C / ${Math.round(tb.f)}F · ${round10(tb.k)} kcal</div>`;
+  document.getElementById('l_totals').innerHTML = `<div class="tiny">Total: ${Math.round(tl.p)}P / ${Math.round(tl.c)}C / ${Math.round(tl.f)}F · ${round10(tl.k)} kcal</div>`;
+  document.getElementById('s_totals').innerHTML = `<div class="tiny">Total: ${Math.round(ts.p)}P / ${Math.round(ts.c)}C / ${Math.round(ts.f)}F · ${round10(ts.k)} kcal</div>`;
+  document.getElementById('d_totals').innerHTML = `<div class="tiny">Total: ${Math.round(td.p)}P / ${Math.round(td.c)}C / ${Math.round(td.f)}F · ${round10(td.k)} kcal</div>`;
+
+  const goalText = (goal==='loss') ? 'Weight loss'
+                   : (goal==='gain') ? 'Gain'
+                   : 'Maintain';
   document.getElementById('summary').innerText =
-    `${name}, your target is ~${Math.round(TDEE)} kcal | Protein ${protein_target} g/day.`;
+    `${name}, base TDEE ~${TDEE_base} kcal → target ~${TDEE_target} kcal (${goalText}) | Protein ${protein_target} g/day.`;
   document.getElementById('macroPills').innerHTML =
-    `<div class="pill">Day total (calc): ${Math.round(day.k)} kcal</div>
+    `<div class="pill">Day total (calc): ${round10(day.k)} kcal</div>
      <div class="pill">P: ${Math.round(day.p)} g</div>
      <div class="pill">C: ${Math.round(day.c)} g</div>
      <div class="pill">F: ${Math.round(day.f)} g</div>`;
   document.getElementById('day_totals').innerText =
-    `Meals are scaled with real foods to land within ~±100 kcal of your TDEE.`;
+    `Meals are calibrated to stay within approximately ±75 kcal of your target, based on the Mifflin–St Jeor equation.
+Please note, this plan is an estimate for a precise and personalized assessment, we recommend speaking with our nutritionists by clicking the Next button below`;
 
-  // Save lead to SheetDB
+  // Save
   saveLead({
-    name, phone, email, pref,
+    name, phone, pref,
     height:h, weight:w, age, sex, activity:act,
-    TDEE: Math.round(TDEE),
+    TDEE_base, TDEE_target, goal,
     p: Math.round(day.p), c: Math.round(day.c), f: Math.round(day.f),
     ts: new Date().toISOString()
   });
@@ -315,10 +411,11 @@ function run(){
 }
 
 function clearAll(){
-  ['name','phone','email','height','weight','age'].forEach(id=>document.getElementById(id).value="");
+  ['name','phone','height','weight','age'].forEach(id=>document.getElementById(id).value="");
   document.getElementById('pref').value="veg";
   document.getElementById('sex').value="male";
   document.getElementById('activity').value="1.2";
+  document.getElementById('goal').value="maintain";
   document.getElementById('results').style.display="none";
 }
 function openPromo(){
